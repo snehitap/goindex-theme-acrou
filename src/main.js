@@ -1,6 +1,6 @@
 import Vue from "vue";
 import App from "./App.vue";
-import ElementUI from "element-ui";
+import { Loading } from "element-ui";
 import "element-ui/lib/theme-chalk/icon.css";
 import "element-ui/lib/theme-chalk/notification.css";
 import "element-ui/lib/theme-chalk/loading.css";
@@ -10,12 +10,12 @@ import router from "./router";
 import i18n from "./i18n";
 // store
 import store from "@/store/index";
-import VueClipboard from "vue-clipboard2";
+import Clipboard from "@/plugin/clipboard";
 import VueLazyload from "vue-lazyload";
 import Viewer from "v-viewer";
 import cdnpath from "./libs/util.cdn";
 // 组件
-import '@/components'
+import "@/components";
 import "viewerjs/dist/viewer.css";
 import "@/assets/style/theme/register.scss";
 
@@ -24,9 +24,9 @@ document.write(
 );
 Vue.config.productionTip = false;
 Vue.prototype.$cdnpath = cdnpath;
-Vue.use(ElementUI);
+Vue.use(Loading);
 Vue.use(VueAxios, axios);
-Vue.use(VueClipboard);
+Vue.use(Clipboard);
 Vue.use(VueLazyload, {
   loading: cdnpath("images/airplane.gif"),
 });

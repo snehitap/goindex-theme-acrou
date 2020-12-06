@@ -15,11 +15,14 @@
 </template>
 
 <script>
+import { mapActions } from "vuex";
+import util from "@/libs/util";
 export default {
   data() {
     return {};
   },
   methods: {
+    ...mapActions("acrou/db", ["databaseClear"]),
     cleanCache() {
       new Promise((resolve) => {
         Object.keys(localStorage).forEach((item) => {
@@ -27,6 +30,8 @@ export default {
             localStorage.removeItem(item);
           }
         });
+        util.cookies.remove("lang");
+        this.databaseClear();
         resolve();
       }).then(() => {
         this.$notify({

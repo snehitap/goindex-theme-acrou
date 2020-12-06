@@ -1,6 +1,10 @@
 <template>
   <div>
-    <headmd :option="headmd" v-if="renderHeadMD && headmd.display" style="margin:1rem 0;"></headmd>
+    <headmd
+      :option="headmd"
+      v-if="renderHeadMD && headmd.display"
+      style="margin:1rem 0;"
+    ></headmd>
     <bread-crumb ref="breadcrumb"></bread-crumb>
     <div class="golist" v-loading="loading">
       <list-view
@@ -71,7 +75,7 @@ import {
   checkView,
   checkExtends,
 } from "@utils/AcrouUtil";
-import { mapState } from "vuex";
+import { mapState, mapActions } from "vuex";
 import BreadCrumb from "../common/BreadCrumb";
 import ListView from "./components/list";
 import GridView from "./components/grid";
@@ -98,31 +102,43 @@ export default {
       files: [],
       viewer: false,
       icon: {
-        "application/vnd.google-apps.folder": "icon-morenwenjianjia",
-        "video/mp4": "icon-mp",
+        "application/vnd.google-apps.folder": "icon-folder",
+        "video/mp4": "icon-mp4",
         "video/x-matroska": "icon-mkv",
         "video/x-msvideo": "icon-avi",
         "video/webm": "icon-webm",
+        "video/x-flv": "icon-video",
+        "application/x-mpegURL": "icon-video",
+        "audio/mpegurl": "icon-video",
+        "audio/mp3": "icon-audio",
+        "audio/flac": "icon-audio",
+        "audio/x-m4a": "icon-audio",
+        "audio/wav": "icon-audio",
+        "audio/ogg": "icon-audio",
         "text/plain": "icon-txt",
         "text/markdown": "icon-markdown",
-        "text/x-ssa": "icon-ASS",
+        "text/x-ssa": "icon-ass",
         "text/html": "icon-html",
         "text/x-python-script": "icon-python",
-        "text/x-java": "icon-java1",
-        "text/x-sh": "icon-SH",
+        "text/x-java": "icon-java",
+        "text/x-sh": "icon-sh",
         "application/x-subrip": "icon-srt",
         "application/zip": "icon-zip",
         "application/x-zip-compressed": "icon-zip",
         "application/rar": "icon-rar",
         "application/pdf": "icon-pdf",
-        "application/json": "icon-JSON1",
-        "application/x-yaml": "icon-YML",
+        "application/json": "icon-json",
+        "application/x-yaml": "icon-yml",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
           "icon-word",
+        "application/vnd.android.package-archive": "icon-app",
+        "application/x-msdownload": "icon-exe",
+        "application/x-apple-diskimage": "icon-dmg",
+        "application/vnd.google-apps.shortcut": "icon-link",
         "image/bmp": "icon-img",
         "image/jpeg": "icon-img",
         "image/png": "icon-img",
-        "image/gif": "icon-img"
+        "image/gif": "icon-img",
       },
       headmd: { display: false, file: {}, path: "" },
       readmemd: { display: false, file: {}, path: "" },
@@ -131,9 +147,7 @@ export default {
   computed: {
     ...mapState("acrou/view", ["mode"]),
     images() {
-      return this.files.filter(
-        (file) => file.mimeType.indexOf("image") != -1
-      );
+      return this.files.filter((file) => file.mimeType.startsWith("image/"));
     },
     renderHeadMD() {
       return window.themeOptions.render.head_md || false;
@@ -146,6 +160,8 @@ export default {
     this.render();
   },
   methods: {
+    ...mapActions("acrou/aplayer", ["add"]),
+    ...mapActions("acrou/db", ["set"]),
     infiniteHandler($state) {
       // 首次进入页面不执行滚动事件
       if (!this.page.page_token) {
@@ -197,9 +213,8 @@ export default {
           }
           this.loading = false;
         })
-        .catch((e) => {
+        .catch(() => {
           this.loading = false;
-          console.log(e);
         });
     },
     buildFiles(files) {
@@ -239,20 +254,7 @@ export default {
     copy(path) {
       let origin = window.location.origin;
       path = origin + encodeURI(path);
-      this.$copyText(path)
-        .then(() => {
-          this.$notify({
-            title: this.$t("notify.title"),
-            message: this.$t("copy.success"),
-            type: "success",
-          });
-        })
-        .catch(() => {
-          this.$notify.error({
-            title: this.$t("notify.title"),
-            message: this.$t("copy.error"),
-          });
-        });
+      this.$copyText(path);
     },
     thum(url) {
       return url ? `/${this.$route.params.id}:view?url=${url}` : "";
@@ -260,8 +262,24 @@ export default {
     inited(viewer) {
       this.$viewer = viewer;
     },
-    action(file, target) {
-      if (file.mimeType.indexOf("image") != -1) {
+    action(file, target, isSearch = true) {
+      // If it is a shortcut, the prompt cannot be downloaded
+      if (file.mimeType === "application/vnd.google-apps.shortcut") {
+        this.$notify({
+          title: "notify.title",
+          message: "error.shortcut_not_down",
+          type: "warning",
+        });
+        return;
+      }
+
+      let cmd = this.$route.params.cmd;
+      if (cmd && cmd === "search" && isSearch) {
+        this.goSearchResult(file, target);
+        return;
+      }
+
+      if (file.mimeType.startsWith("image/") && target === "view") {
         this.viewer = true;
         this.$nextTick(() => {
           let index = this.images.findIndex((item) => item.path === file.path);
@@ -269,9 +287,22 @@ export default {
         });
         return;
       }
-      let cmd = this.$route.params.cmd;
-      if (cmd && cmd === "search") {
-        this.goSearchResult(file, target);
+      if (
+        file.mimeType.startsWith("audio/") &&
+        file.mimeType.indexOf("mpegurl") == -1 &&
+        target === "view"
+      ) {
+        if (window.aplayer) {
+          this.add({
+            audio: {
+              id: file.id,
+              name: file.name,
+              artist: "none",
+              url: file.path,
+            },
+            play: true,
+          });
+        }
         return;
       }
       this.target(file, target);
@@ -291,8 +322,13 @@ export default {
         return;
       }
       if (target === "view") {
+        let checkViewPath = checkView(path);
+        this.set({
+          path: `page.${checkViewPath}`,
+          value: file,
+        });
         this.$router.push({
-          path: checkView(path),
+          path: checkViewPath,
         });
         return;
       }
@@ -337,7 +373,7 @@ export default {
           let data = res.data;
           if (data) {
             file.path = `/${id}:${data}`;
-            this.target(file, target);
+            this.action(file, target, false);
           }
         })
         .catch((e) => {
@@ -346,7 +382,7 @@ export default {
         });
     },
     getIcon(type) {
-      return "#" + (this.icon[type] ? this.icon[type] : "icon-weizhi");
+      return "#" + (this.icon[type] ? this.icon[type] : "icon-file");
     },
   },
 };

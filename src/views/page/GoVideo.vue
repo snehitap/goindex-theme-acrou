@@ -1,10 +1,10 @@
 <template>
   <div class="content g2-content">
-    <div v-if="player && player.api" class="video-content">
+    <div v-if="options && options.api" class="video-content">
       <iframe
         width="100%"
         height="100%"
-        :src="apiUrl"
+        :src="apiVideoUrl"
         frameborder="0"
         border="0"
         marginwidth="0"
@@ -14,9 +14,20 @@
         allowfullscreen="true"
       ></iframe>
     </div>
-    <video v-else style="width:100%;" preload controls>
-      <source :src="videoUrl" type="video/mp4" />
-    </video>
+    <div v-else>
+      <vue-plyr ref="plyr" :options="options">
+        <video controls crossorigin playsinline>
+          <source :src="videoUrl" type="video/mp4" />
+          <track
+            kind="captions"
+            label="Default"
+            srclang="default"
+            :src="subtitle"
+            default
+          />
+        </video>
+      </vue-plyr>
+    </div>
     <div class="card">
       <header class="card-header">
         <p class="card-header-title">
@@ -33,7 +44,12 @@
       <div class="card-content">
         <div class="content">
           <div class="field">
-            <label class="label">{{ $t("page.video.link") }}</label>
+            <label class="label">
+              {{ $t("page.video.link") }}
+              <a class="button is-text index-button-copy" @click="copy">
+                {{ $t("copy.text") }}
+              </a>
+            </label>
             <div class="control">
               <input class="input" type="text" :value="videoUrl" />
             </div>
@@ -62,25 +78,104 @@
 
 <script>
 import { decode64 } from "@utils/AcrouUtil";
+import VuePlyr from "vue-plyr";
 export default {
+  comments: {
+    VuePlyr,
+  },
   data: function() {
     return {
-      apiUrl: "",
-      player: window.themeOptions.player,
+      apiVideoUrl: "",
       videoUrl: "",
+      subtitle: "",
     };
+  },
+  mounted() {
+    this.render();
   },
   methods: {
     render() {
-      // 便于开发环境调试
-      this.videoUrl = window.location.origin + encodeURI(this.url);
-      this.apiUrl = this.player.api + this.videoUrl;
+      let path = encodeURI(this.url);
+      let index = path.lastIndexOf(".");
+      this.suffix = path.substring(index + 1, path.length);
+      this.loadSub(path, index);
+      this.videoUrl = window.location.origin + path;
+      this.apiVideoUrl = this.options.api + this.videoUrl;
+      if (!this.options.api) {
+        let options = {
+          src: this.videoUrl,
+          autoplay: this.options.autoplay,
+          media: this.player.media,
+        };
+        if (this.suffix === "m3u8") {
+          this.loadHls(options);
+        } else if (this.suffix === "flv") {
+          this.loadFlv(options);
+        }
+      }
+    },
+    loadSub(path, index) {
+      this.subtitle = path.substring(0, index) + ".vtt";
+    },
+    loadHls(options) {
+      import("@/plugin/vplayer/hls").then((res) => {
+        var Hls = res.default;
+        Hls({
+          ...options,
+          callback: (hls) => {
+            // Handle changing captions
+            this.player.on("languagechange", () => {
+              // Caption support is still flaky. See: https://github.com/sampotts/plyr/issues/994
+              setTimeout(
+                () => (hls.subtitleTrack = this.player.currentTrack),
+                50
+              );
+            });
+          },
+        });
+      });
+    },
+    loadFlv(options) {
+      import("@/plugin/vplayer/flv").then((res) => {
+        var Flv = res.default;
+        Flv(options);
+      });
+    },
+    copy() {
+      this.$copyText(this.videoUrl);
     },
   },
-  activated() {
-    this.render();
-  },
   computed: {
+    options() {
+      var options = window.themeOptions.video;
+      return {
+        autoplay: false,
+        invertTime: false,
+        settings: ["quality", "speed", "loop"],
+        ratio: "16:9",
+        controls: [
+          "play-large",
+          "restart",
+          "play",
+          "progress",
+          "current-time",
+          "duration",
+          "mute",
+          "volume",
+          "captions",
+          "settings",
+          "pip",
+          "airplay",
+          "download",
+          "fullscreen",
+        ],
+        ...options,
+        captions: { active: true, language: "default", ...options.captions },
+      };
+    },
+    player() {
+      return this.$refs.plyr.player;
+    },
     url() {
       if (this.$route.params.path) {
         return decode64(this.$route.params.path);
